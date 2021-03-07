@@ -23,13 +23,13 @@ class GNN(nn.Module):
                                       for _ in range(n_layers)])
         self.out       = nn.Linear(n_hid, n_out)
         self.node_level = node_level
-        
+
     def forward(self, node_attr, edge_index, batch_idx, adv_atts):
         node_rep = self.node_encoder(node_attr)
         for gc, adv_att in zip(self.gcs, adv_atts):
             node_rep = gc(node_rep, edge_index, adv_att)
         if self.node_level == False:
-            return self.out(global_mean_pool(node_rep, batch_idx))
+            return self.out(global_mean_pool(node_rep, batch_idx))  
         else:
             return node_rep
 
@@ -54,7 +54,7 @@ class GNN2(nn.Module):
         for gc, adv_att in zip(self.gcs, adv_atts):
             node_rep = gc(node_rep, edge_index, adv_att)
         if self.node_level == False:
-            return self.out(global_mean_pool(node_rep, batch_idx))
+            return self.out(global_mean_pool(node_rep, batch_idx))  
         else:
             return node_rep #self.out(node_rep)
 
@@ -67,7 +67,7 @@ class GCN_Layer(MessagePassing):
         self.a_linear   = nn.Linear(n_hid,   n_hid)
         self.norm       = nn.LayerNorm(n_hid)
         self.drop       = nn.Dropout(dropout)
-
+        
     def forward(self, node_inp, edge_index, adv_att):
         return self.propagate(edge_index, node_inp=node_inp, adv_att = adv_att)
 
@@ -85,4 +85,32 @@ class GCN_Layer(MessagePassing):
 
     def update(self, aggr_out, node_inp):
         trans_out = self.norm(self.drop(self.a_linear(F.relu(aggr_out))) + node_inp)
+        return trans_out
+
+class GCN_Layer2(MessagePassing):
+    def __init__(self, n_in, n_out, n_heads, dropout = 0.2, **kwargs):
+        super(GCN_Layer2, self).__init__(node_dim=0, aggr='add', **kwargs)
+
+        self.att           = None
+        self.a_linear   = nn.Linear(n_in,   n_out)
+        self.norm       = nn.LayerNorm(n_out)
+        self.drop       = nn.Dropout(dropout)
+        
+    def forward(self, node_inp, edge_index, adv_att):
+        return self.propagate(edge_index, node_inp=node_inp, adv_att = adv_att)
+
+    def message(self, edge_index_i, node_inp_j, adv_att):
+        '''
+            j: source, i: target; <j, i>
+        '''
+
+        '''
+            Softmax based on target node's id (edge_index_i). Store attention value in self.att for later visualization.
+        '''
+        self.att = softmax(adv_att.log(), edge_index_i)
+        return node_inp_j * self.att.view(-1, 1)
+
+
+    def update(self, aggr_out, node_inp):
+        trans_out = self.norm(self.drop(self.a_linear(F.gelu(aggr_out)+node_inp)))
         return trans_out

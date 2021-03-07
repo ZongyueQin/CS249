@@ -28,7 +28,7 @@ def pre_process(d):
     new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index)
     return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index)
 
-  def pre_process_no_batch(d):
+def pre_process_no_batch(d):
     new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index)
     return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index, batch=None,
                 train_mask = d.train_mask, val_mask = d.val_mask, test_mask = d.test_mask, num_nodes = d.num_nodes)

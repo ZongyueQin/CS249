@@ -31,7 +31,7 @@ print(device)
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
 args.dataset = 'cora'
-#args.n_classes = 10
+#args.n_classes = 10 
 args.lr = 2e-4
 args.n_hids = [32]
 args.n_heads = 1
@@ -66,7 +66,7 @@ data = pre_process_no_batch(pyg_data.data).to(device)
 #print(evaluator.expected_input_format)
 #print(evaluator.expected_output_format)
 def trades_on_edge(data, model, train = True):
-
+    
     step_size = 1e-2
     original_adv_atts = []
     for _ in model.gcs:
@@ -88,8 +88,9 @@ def trades_on_edge(data, model, train = True):
             adv_att.data = adv_att.detach() + step_size * torch.sign(g.detach())
     return original_adv_atts, [torch.clamp(ori_att + adv_att, min=0.0001).detach() for ori_att, adv_att \
                                     in zip(original_adv_atts, perturb_adv_atts)]
-  
-""" used for PGDAttack and MinMax, but for now there are problems for these two attach methods """
+
+""" for PGDAttack, but currently there are problems """
+"""
 class Wrp_GNN(nn.Module):
     def __init__(self, model):
         super(Wrp_GNN, self).__init__()
@@ -98,7 +99,7 @@ class Wrp_GNN(nn.Module):
         self.nfeat = model.n_ins[0]
         self.hidden_sizes = model.n_ins[1:]
         self.output = None
-
+         
     def forward(self, features, adj):
         edge_index, _ = from_scipy_sparse_matrix(scipy.sparse.csr_matrix(adj))
         new_edge_index, init_att = randomly_perturb(node_size = features.shape[0], edge_index = edge_index)
@@ -108,9 +109,9 @@ class Wrp_GNN(nn.Module):
         d = Data(x = features, edge_index = new_edge_index)
         d = d.to(device)
         return self.model(d.x, d.edge_index, None, original_adv_atts)
-
-model = GNN2(num_feats, args.n_hids,
-            num_classes, args.n_heads,
+"""
+model = GNN2(num_feats, args.n_hids, 
+            num_classes, args.n_heads, 
             args.n_layer, args.dropout,
             node_level = True).to(device)
 criterion = torch.nn.CrossEntropyLoss()
@@ -142,7 +143,8 @@ for epoch in range(args.num_epochs):
 
         optimizer.step()
         optimizer.zero_grad()
-        
+ #       scheduler.step()
+
     model.eval()
     with torch.no_grad():
         ori_adv_atts, _ = trades_on_edge(data, model, train = False)
@@ -163,6 +165,7 @@ for epoch in range(args.num_epochs):
         if no_increase_epoch_num >= args.max_no_increase_epoch_num:
             print('early stop')
             break
+
         ori_adv_atts, _ = trades_on_edge(data, model, train = False)
         out = model(data.x, data.edge_index, None, ori_adv_atts)
         out_train = out[data.train_mask]
@@ -174,6 +177,7 @@ for epoch in range(args.num_epochs):
 
     print('Epoch %d: LR: %.5f, Train loss: %.3f Train Accuracy: %.3f Valid loss: %.3f  Valid Accuracy: %.3f' \
           % (epoch, optimizer.param_groups[0]['lr'], np.average(train_loss), train_acc, valid_loss, valid_acc))
+
 model.eval()
 with torch.no_grad():
     ori_adv_atts, _ = trades_on_edge(data, model, train = False)
@@ -187,7 +191,7 @@ with torch.no_grad():
     print('Test Accuracy: %.3f' % (acc))
 
     """ Robust Accuracy (Random) """
-    perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = args.n_perturbations)
+    perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = args.n_perturbations) 
     pyg_data.update_edge_index(perturbed_adj)
     adv_data = pre_process_no_batch(pyg_data.data).to(device)
     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
@@ -199,9 +203,9 @@ with torch.no_grad():
     total = adv_data.test_mask.sum()
     acc = correct.float() / total.float()
     print('Test Robust Accuracy (Random): %.3f' % (acc))
-    
+
     """ Robust Accuracy (DICE) """
-    perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = args.n_perturbations)
+    perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = args.n_perturbations) 
     pyg_data.update_edge_index(perturbed_adj)
     adv_data = pre_process_no_batch(pyg_data.data).to(device)
     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
@@ -213,14 +217,14 @@ with torch.no_grad():
     total = adv_data.test_mask.sum()
     acc = correct.float() / total.float()
     print('Test Robust Accuracy (DICE): %.3f' % (acc))
-    
-    """ Test Robust Accuracy (PGD) """
 
+    """ Test Robust Accuracy (PGD) """
+    
     """
     wrp_model = Wrp_GNN(model)
     perturbed_adj = apply_PGDAttack(wrp_model, dpr_data.features, dpr_data.adj,
-                                    dpr_data.labels, dpr_data.idx_train,
-                                    n_perturbations = 30)
+                                    dpr_data.labels, dpr_data.idx_train, 
+                                    n_perturbations = 30) 
     pyg_data.update_edge_index(perturbed_adj)
     adv_data = pre_process_no_batch(pyg_data.data).to(device)
     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
@@ -233,7 +237,6 @@ with torch.no_grad():
     acc = correct.float() / total.float()
     print('Test Robust Accuracy (PGDAttack): %.3f' % (acc))
     """
-    
     for rate in [0.05, 0.1, 0.15, 0.2, 0.25]:
         perturbed_data = PrePtbDataset(root = 'dataset/',
                                            name = 'cora',
@@ -251,8 +254,16 @@ with torch.no_grad():
         total = adv_data.test_mask.sum()
         acc = correct.float() / total.float()
         print('Test Robust Accuracy (Preperturbed Method: Meta rate: %.2f): %.3f' % (rate, acc))
-        
-    for rate in [1.0, 2.0, 3.0, 4.0, 5.0]:                                                                                            perturbed_data = PrePtbDataset(root = 'dataset/',                                                                                                                name = 'cora',                                                                                                                attack_method = 'nettack',                                                                                                    ptb_rate = rate)                                                                           ptb_adj = perturbed_data.adj                                                                                                  pyg_data.update_edge_index(ptb_adj)                                                                                           adv_data = pre_process_no_batch(pyg_data.data).to(device)                                                                     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
+   
+    for rate in [1.0, 2.0, 3.0, 4.0, 5.0]:
+        perturbed_data = PrePtbDataset(root = 'dataset/',
+                                           name = 'cora',
+                                           attack_method = 'nettack',
+                                           ptb_rate = rate)
+        ptb_adj = perturbed_data.adj
+        pyg_data.update_edge_index(ptb_adj)
+        adv_data = pre_process_no_batch(pyg_data.data).to(device)
+        ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
         out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
         out_test = out[adv_data.test_mask]
         y_test = adv_data.y[adv_data.test_mask]
@@ -261,7 +272,7 @@ with torch.no_grad():
         total = adv_data.test_mask.sum()
         acc = correct.float() / total.float()
         print('Test Robust Accuracy (Preperturbed Method: Nettack rate: %.2f): %.3f' % (rate, acc))
-
+   
 
 
 
