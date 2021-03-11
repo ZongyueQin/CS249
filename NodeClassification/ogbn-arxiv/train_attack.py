@@ -1,6 +1,6 @@
 import os
 import argparse
-os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+#os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"]="4"
 
 import torch
@@ -24,26 +24,29 @@ from utils import *
 from attack import apply_Random, apply_DICE, apply_PGDAttack
 import scipy.sparse
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "2"
+from ogb.nodeproppred import PygNodePropPredDataset, Evaluator
+from deeprobust.graph.data import Dataset, Dpr2Pyg, Pyg2Dpr
+import torch
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
-args.dataset = 'cora'
+args.dataset = 'ogbn-arxiv'
 #args.n_classes = 10 
-args.lr = 2e-4
-args.n_hids = [32]
+args.lr = 1e-2
+args.n_hids = [256, 256]
 args.n_heads = 1
-args.n_layer = 2
-args.dropout = 0.2
-args.num_epochs = 200
+args.n_layer = len(args.n_hids)+1
+args.dropout = 0.
+args.num_epochs = 500
 args.weight_decay = 0.01
-args.w_robust = 1
-args.step_per_epoch = 1
+args.w_robust = 0
+args.step_per_epoch = 10
 args.device = device
 args.n_perturbations = 1000
-args.max_no_increase_epoch_num = 10
+args.max_no_increase_epoch_num = 50
 #args.node_dim = 9
 #args.edge_dim = 3
 #args.bsz      = 128
@@ -52,14 +55,24 @@ print('w_robust = %d'%args.w_robust)
 print('Loading Data')
 print("dataset: {} ".format(args.dataset))
 
-# dataset = Planetoid(root='dataset/', name='Cora', transform=pre_process_no_batch)
+dataset = PygNodePropPredDataset(name = args.dataset)
+split_idx = dataset.get_idx_split()
+train_idx, valid_idx, test_idx = split_idx["train"], split_idx["valid"], split_idx["test"]
 
-dpr_data = Dataset(root='dataset/', name='cora', seed=15)
+pyg_data = dataset[0]
+pyg_data.y = pyg_data.y.view(-1)
+pyg_data.train_mask = idx2mask(train_idx, pyg_data.num_nodes)
+pyg_data.test_mask = idx2mask(test_idx, pyg_data.num_nodes)
+pyg_data.val_mask = idx2mask(valid_idx, pyg_data.num_nodes)
+
+dpr_data = Pyg2Dpr([pyg_data])
+wrp_pyg_data = Dpr2Pyg(dpr_data)
+
+
 num_feats = dpr_data.features.shape[1]
 num_classes = dpr_data.labels.max().item() + 1
 
-pyg_data = Dpr2Pyg(dpr_data)
-data = pre_process_no_batch(pyg_data.data).to(device)
+data = pre_process_no_batch(pyg_data).to(device)
 
 #dataset = PygGraphPropPredDataset(name = args.dataset, root='dataset/')
 #evaluator = Evaluator(name=args.dataset)
@@ -70,10 +83,10 @@ def trades_on_edge(data, model, train = True):
     step_size = 1e-2
     original_adv_atts = []
     for _ in model.gcs:
-        att = Variable(data.edge_attr.repeat(args.n_heads, 1).t(), requires_grad=False).to(args.device)
-        if train == False:
-            att = torch.round(att).float()
-        original_adv_atts.append(att)
+        atts = Variable(data.edge_attr.repeat(args.n_heads, 1).t(), requires_grad=False).to(args.device)
+        if not train:
+            atts = torch.round(atts).float()
+        original_adv_atts.append(atts)
     if not train:
         return original_adv_atts, None
     perturb_adv_atts  = []
@@ -122,8 +135,8 @@ criterion_kl = nn.KLDivLoss(reduction='sum')
 
 optimizer = get_optimizer(model, weight_decay=args.weight_decay, learning_rate=1e-2)
 
-#scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, pct_start = 0.05,\
-#        steps_per_epoch=args.step_per_epoch, epochs = args.num_epochs, anneal_strategy = 'linear')
+scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, pct_start = 0.05,\
+        steps_per_epoch=args.step_per_epoch, epochs = args.num_epochs, anneal_strategy = 'linear')
 
 highest_val_acc = 0.
 no_increase_epoch_num = 0
@@ -146,7 +159,7 @@ for epoch in range(args.num_epochs):
 
         optimizer.step()
         optimizer.zero_grad()
- #       scheduler.step()
+        scheduler.step()
 
     model.eval()
     with torch.no_grad():
@@ -195,8 +208,8 @@ with torch.no_grad():
 
     """ Robust Accuracy (Random) """
     perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = args.n_perturbations) 
-    pyg_data.update_edge_index(perturbed_adj)
-    adv_data = pre_process_no_batch(pyg_data.data).to(device)
+    wrp_pyg_data.update_edge_index(perturbed_adj)
+    adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
     out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
     out_test = out[adv_data.test_mask]
@@ -209,8 +222,8 @@ with torch.no_grad():
 
     """ Robust Accuracy (DICE) """
     perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = args.n_perturbations) 
-    pyg_data.update_edge_index(perturbed_adj)
-    adv_data = pre_process_no_batch(pyg_data.data).to(device)
+    wrp_pyg_data.update_edge_index(perturbed_adj)
+    adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
     ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
     out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
     out_test = out[adv_data.test_mask]
@@ -239,6 +252,7 @@ with torch.no_grad():
     total = adv_data.test_mask.sum()
     acc = correct.float() / total.float()
     print('Test Robust Accuracy (PGDAttack): %.3f' % (acc))
+    """
     """
     for rate in [0.05, 0.1, 0.15, 0.2, 0.25]:
         perturbed_data = PrePtbDataset(root = 'dataset/',
@@ -275,7 +289,7 @@ with torch.no_grad():
         total = adv_data.test_mask.sum()
         acc = correct.float() / total.float()
         print('Test Robust Accuracy (Preperturbed Method: Nettack rate: %.2f): %.3f' % (rate, acc))
-   
+    """ 
 
 
 
