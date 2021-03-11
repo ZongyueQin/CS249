@@ -1,7 +1,7 @@
 import os
 import argparse
 #os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"]="4"
+os.environ["CUDA_VISIBLE_DEVICES"]="5"
 
 import torch
 import torch.nn as nn
@@ -45,7 +45,7 @@ args.weight_decay = 0.01
 args.w_robust = 0
 args.step_per_epoch = 10
 args.device = device
-args.n_perturbations = 1000
+args.n_perturbations = [0.02, 0.04, 0.06, 0.08, 0.10]
 args.max_no_increase_epoch_num = 50
 #args.node_dim = 9
 #args.edge_dim = 3
@@ -71,6 +71,8 @@ wrp_pyg_data = Dpr2Pyg(dpr_data)
 
 num_feats = dpr_data.features.shape[1]
 num_classes = dpr_data.labels.max().item() + 1
+num_edges = pyg_data.edge_index.size(1)
+print(num_edges)
 
 data = pre_process_no_batch(pyg_data).to(device)
 
@@ -207,32 +209,34 @@ with torch.no_grad():
     print('Test Accuracy: %.3f' % (acc))
 
     """ Robust Accuracy (Random) """
-    perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = args.n_perturbations) 
-    wrp_pyg_data.update_edge_index(perturbed_adj)
-    adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
-    ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
-    out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
-    out_test = out[adv_data.test_mask]
-    y_test = adv_data.y[adv_data.test_mask]
-    predict = torch.argmax(out_test, dim = 1)
-    correct = (predict.view(-1).long()==y_test.long()).sum()
-    total = adv_data.test_mask.sum()
-    acc = correct.float() / total.float()
-    print('Test Robust Accuracy (Random): %.3f' % (acc))
+    for ratio in args.n_perturbations:
+        perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = int(ratio*num_edges)) 
+        wrp_pyg_data.update_edge_index(perturbed_adj)
+        adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
+        ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
+        out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
+        out_test = out[adv_data.test_mask]
+        y_test = adv_data.y[adv_data.test_mask]
+        predict = torch.argmax(out_test, dim = 1)
+        correct = (predict.view(-1).long()==y_test.long()).sum()
+        total = adv_data.test_mask.sum()
+        acc = correct.float() / total.float()
+        print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
 
     """ Robust Accuracy (DICE) """
-    perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = args.n_perturbations) 
-    wrp_pyg_data.update_edge_index(perturbed_adj)
-    adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
-    ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
-    out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
-    out_test = out[adv_data.test_mask]
-    y_test = adv_data.y[adv_data.test_mask]
-    predict = torch.argmax(out_test, dim = 1)
-    correct = (predict.view(-1).long()==y_test.long()).sum()
-    total = adv_data.test_mask.sum()
-    acc = correct.float() / total.float()
-    print('Test Robust Accuracy (DICE): %.3f' % (acc))
+    for ratio in args.n_perturbations:
+        perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = int(ratio*num_edges)) 
+        wrp_pyg_data.update_edge_index(perturbed_adj)
+        adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
+        ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
+        out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
+        out_test = out[adv_data.test_mask]
+        y_test = adv_data.y[adv_data.test_mask]
+        predict = torch.argmax(out_test, dim = 1)
+        correct = (predict.view(-1).long()==y_test.long()).sum()
+        total = adv_data.test_mask.sum()
+        acc = correct.float() / total.float()
+        print('Test Robust Accuracy (DICE, %.2f): %.3f' % (ratio, acc))
 
     """ Test Robust Accuracy (PGD) """
     
