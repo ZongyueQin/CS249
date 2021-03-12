@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from torch.optim import AdamW, SGD
+from torch.optim import AdamW, SGD, Adam
 import torch.nn as nn
 import torch
 import torch.nn as nn
@@ -9,9 +9,18 @@ from torch.autograd import Variable
 from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, uniform
-from torch_geometric.utils import softmax, add_remaining_self_loops
+from torch_geometric.utils import softmax, add_remaining_self_loops, degree
 from torch_geometric.data import Data
 import math
+
+def hasNAN(X):
+    return (X != X).sum().item() > 0
+
+def idx2mask(idx, num_nodes):
+    mask = np.zeros([num_nodes], dtype=np.bool_)
+    mask[idx] = True
+    return torch.tensor(mask, dtype=torch.bool)
+
 
 def turn_prob(inp):
     prob = torch.sigmoid(inp)
@@ -43,7 +52,8 @@ def get_optimizer(model: nn.Module, learning_rate: float = 1e-4, adam_eps: float
          'weight_decay': weight_decay},
         {'params': [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
     ]
-#    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=adam_eps)
-    optimizer = SGD(optimizer_grouped_parameters, lr=learning_rate)
+    #optimizer = Adam(optimizer_grouped_parameters, lr=learning_rate)
+    optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=adam_eps)
+#    optimizer = SGD(optimizer_grouped_parameters, lr=learning_rate)
 
     return optimizer

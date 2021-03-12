@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,6 +10,7 @@ from torch_geometric.utils import softmax, add_remaining_self_loops, degree
 from ogb.graphproppred.mol_encoder import AtomEncoder, BondEncoder
 import math
 from torch_geometric.nn import global_mean_pool
+from utils import hasNAN
 
 
 
@@ -43,7 +45,7 @@ class GNN2(nn.Module):
         self.n_ins = [n_feat] + n_hids
         self.n_outs = n_hids + [n_out]
         self.drop      = nn.Dropout(dropout)
-        self.gcs       = nn.ModuleList([GCN_Layer2(self.n_ins[i], self.n_outs[i], n_heads, dropout)\
+        self.gcs       = nn.ModuleList([GCN_Layer3(self.n_ins[i], self.n_outs[i], n_heads, dropout)\
                                       for i in range(n_layers)])
         #self.out       = nn.Linear(n_hid, n_out)
         self.node_level = node_level
@@ -97,11 +99,47 @@ class GCN_Layer2(MessagePassing):
         self.drop       = nn.Dropout(dropout)
         
     def forward(self, node_inp, edge_index, adv_att):
+        return self.propagate(edge_index, node_inp=node_inp, adv_att = adv_att)
+
+    def message(self, edge_index_i, node_inp_j, adv_att):
+        '''
+            j: source, i: target; <j, i>
+        '''
+
+        '''
+            Softmax based on target node's id (edge_index_i). Store attention value in self.att for later visualization.
+        '''
+        self.att = softmax(adv_att.log(), edge_index_i)
+        return node_inp_j * self.att.view(-1, 1)
+
+
+    def update(self, aggr_out, node_inp):
+        trans_out = self.norm(self.drop(self.a_linear(F.gelu(aggr_out)+node_inp)))
+        return trans_out
+
+class GCN_Layer3(MessagePassing):
+    def __init__(self, n_in, n_out, n_heads, dropout = 0.2, **kwargs):
+        super(GCN_Layer3, self).__init__(node_dim=0, aggr='add', **kwargs)
+
+        self.att           = None
+        self.a_linear   = nn.Linear(n_in,   n_out)
+        self.norm       = nn.LayerNorm(n_out)
+        self.drop       = nn.Dropout(dropout)
+        
+    def forward(self, node_inp, edge_index, adv_att):
         #edge_index, _ = add_remaining_self_loops(edge_index, num_nodes=node_inp.size(0))
         node_inp = self.a_linear(node_inp)
         row, col = edge_index
         deg = degree(col, node_inp.size(0), dtype=node_inp.dtype)
-        deg_inv_sqrt = (deg+0.001).pow(-0.5)
+        deg_inv_sqrt = deg.pow(-0.5)
+        if hasNAN(deg_inv_sqrt):
+            print('deg_inv_sqrt NAN')
+            print(deg_inv_sqrt)
+            os._exit(0) 
+        if hasNAN(adv_att):
+            print('hashNAN adv_att')
+            print(adv_att)
+            os._exit(0)
         degree_norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
 
         return self.propagate(edge_index, node_inp=node_inp, adv_att = adv_att, degree_norm = degree_norm)
@@ -115,6 +153,10 @@ class GCN_Layer2(MessagePassing):
             Softmax based on target node's id (edge_index_i). Store attention value in self.att for later visualization.
         '''
         self.att = softmax(adv_att.log(), edge_index_i)
+        if hasNAN(self.att):
+            print('self.att NAN')
+            print(adv_att)
+            os._exit(0)
         return node_inp_j * self.att.view(-1, 1) * degree_norm.view(-1, 1)
 
 
