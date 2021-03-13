@@ -48,7 +48,7 @@ args.weight_decay = 0.01
 args.w_robust = 0
 args.step_per_epoch = 10
 args.device = device
-args.n_perturbations = [0.02, 0.04, 0.08]
+args.n_perturbations = [0.01, 0.02, 0.04]
 args.max_no_increase_epoch_num = 50
 #args.node_dim = 9
 
@@ -106,7 +106,11 @@ svd.fit(features, adj, labels, train_idx, valid_idx, k=20, train_iters = args.nu
 
 rgcn = RGCN(nfeat = num_feats, nnodes=features.shape[0],
             nhids=args.n_hids, nclass = num_classes, device = device).to(device)
-rgcn.fit(features, adj, labels, train_idx, valid_idx, train_iters = 10)
+rgcn.fit(features, adj, labels, train_idx, valid_idx, train_iters = args.num_epochs*args.step_per_epoch)
+
+rgcn_2 = RGCN(nfeat = num_feats, nnodes=features.shape[0],
+            nhids=args.n_hids, nclass = num_classes, device = device).to(device)
+
 
 """ clean accuracy """
 #print('GCNJaccard')
@@ -117,33 +121,29 @@ print('RGCN')
 rgcn.test(test_idx)
 
 #models = [("GCNJaccard", jaccard)]
-models = [("RGCN", rgcn)]
+models = [("RGCN", rgcn, rgcn_2)]
 #models=          [("GCNSVD", svd)]
 """ Robust Accuracy (Random) """
 
 y_test = labels[test_idx]
 y_test = torch.from_numpy(y_test).long().to(device)
 for ratio in args.n_perturbations:
-    for name, model in models:
+    for name, model, model_2 in models:
         print(name)
         perturbed_adj = apply_Random(dpr_data.adj, n_perturbations = int(ratio*num_edges))
-        #wrp_pyg_data.update_edge_index(perturbed_adj)
-        #adv_data = pre_process_no_batch(wrp_pyg_data.data).to(device)
-        #ori_adv_atts, _ = trades_on_edge(adv_data, model, train = False)
         predict = torch.argmax(model.predict(features = features, adj = perturbed_adj), dim=1)
-#        out = model(adv_data.x, adv_data.edge_index, None, ori_adv_atts)
-#        out_test = out[adv_data.test_mask]
-#        y_test = adv_data.y[adv_data.test_mask]
-#        predict = torch.argmax(out_test, dim = 1)
         predict = predict[test_idx]
         correct = (predict.view(-1).long()==y_test).sum()
         total = pyg_data.test_mask.sum()
         acc = correct.float() / total.float()
         print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
+        model_2.fit(features, perturbed_adj, labels, train_idx, valid_idx, train_iters = args.num_epochs*args.step_per_epoch)
+        print('posinoning atttack')
+        model_2.test(test_idx)
 
     """ Robust Accuracy (DICE) """
 for ratio in args.n_perturbations:
-    for name, model in models:
+    for name, model, model_2 in models:
         print(name)
         perturbed_adj = apply_DICE(dpr_data.adj, dpr_data.labels, n_perturbations = int(ratio*num_edges))
         predict = torch.argmax(model.predict(features = features, adj = perturbed_adj), dim=1)
@@ -151,5 +151,9 @@ for ratio in args.n_perturbations:
         correct = (predict.view(-1).long()==y_test).sum()
         total = pyg_data.test_mask.sum()
         acc = correct.float() / total.float()
-
         print('Test Robust Accuracy (DICE, %.2f): %.3f' % (ratio, acc))
+        model_2.fit(features, perturbed_adj, labels, train_idx, valid_idx, train_iters = args.num_epochs*args.step_per_epoch)
+        print('posinoning atttack')
+        model_2.test(test_idx)
+
+
