@@ -19,6 +19,7 @@ import deeprobust
 from deeprobust.graph.data import Dataset, Dpr2Pyg, Pyg2Dpr, PrePtbDataset
 #from deeprobust.graph.defense import GCNJaccard, GCNSVD, RGCN, ProGNN
 from MyDeepRobustGCN import GCNJaccard, GCNSVD
+from MyDeepRobustRGCN import RGCN
 
 from GCN import GNN, GNN2
 
@@ -80,6 +81,7 @@ adj, features, labels = dpr_data.adj, dpr_data.features.numpy(), dpr_data.labels
 print(type(adj))
 
 
+"""
 jaccard = GCNJaccard(nfeat = num_feats, 
                      nhids = args.n_hids,
                      nclass = num_classes,
@@ -89,6 +91,8 @@ jaccard = GCNJaccard(nfeat = num_feats,
                      device = device).to(device)
 
 jaccard.fit(features, adj, labels, train_idx, valid_idx, threshold=0.03, train_iters = args.num_epochs*args.step_per_epoch)
+"""
+
 
 
 """
@@ -100,13 +104,20 @@ svd = GCNSVD(nfeat = num_feats, nhids = args.n_hids,
 svd.fit(features, adj, labels, train_idx, valid_idx, k=20, train_iters = args.num_epochs*args.step_per_epoch)
 """
 
+rgcn = RGCN(nfeat = num_feats, nnodes=features.shape[0],
+            nhids=args.n_hids, nclass = num_classes, device = device).to(device)
+rgcn.fit(features, adj, labels, train_idx, valid_idx, train_iters = 10)
+
 """ clean accuracy """
-print('GCNJaccard')
-jaccard.test(test_idx)
+#print('GCNJaccard')
+#jaccard.test(test_idx)
 #print('GCNSVD')
 #svd.test(test_idx)
+print('RGCN')
+rgcn.test(test_idx)
 
-models = [("GCNJaccard", jaccard)]
+#models = [("GCNJaccard", jaccard)]
+models = [("RGCN", rgcn)]
 #models=          [("GCNSVD", svd)]
 """ Robust Accuracy (Random) """
 
