@@ -15,20 +15,20 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
-args.dataset = 'pubmed'
+args.dataset = 'cora'
 #args.n_classes = 10
-args.lr = 2e-4
-args.n_hids = 32
-args.n_heads = 1                # currently not used in GNN2 implementation?
-args.n_layer = 2                # same in default
+args.lr = 1e-2
+args.n_hids = [256, 256]
+args.n_heads = 1                                 # currently not used in GNN2 implementation?
+args.n_layer = len(args.n_hids)+1                # same in default
 args.dropout = 0.2
-args.num_epochs = 200           # same in default
+args.num_epochs = 500                            # same in default
 args.weight_decay = 0.01
 args.w_robust = 0
 args.step_per_epoch = 1
 args.device = device
 args.n_perturbations = [0.01, 0.02, 0.04]
-args.max_no_increase_epoch_num = 10
+args.max_no_increase_epoch_num = 50
 
 def fit_model(name, model, features, adj, labels, idx_train, idx_val, epochs):
     if name == 'jaccard':
@@ -36,10 +36,10 @@ def fit_model(name, model, features, adj, labels, idx_train, idx_val, epochs):
     if name == 'svd':
         model.fit(features, adj, labels, idx_train, idx_val, k=20, train_iters=epochs)            # svd
     if name == 'rgcn':
-        model.fit(features, adj, labels, idx_train, idx_val, train_iters=eochs)
+        model.fit(features, adj, labels, idx_train, idx_val, train_iters=epochs)
 
 def main():
-    data = Dataset(root='dataset/', name=args.dataset, seed=15)
+    data = Dataset(root='./Cora/dataset/', name=args.dataset, seed=15)
     adj, features, labels = data.adj, data.features, data.labels
     idx_train, idx_val, idx_test = data.idx_train, data.idx_val, data.idx_test
     num_edges = 44338
@@ -80,12 +80,12 @@ def main():
 
     print("This is GCN SVD \n\n")
 
-    rgcn = RGCN(nnodes=perturbed_adj.shape[0], nfeat=features.shape[1],
+    rgcn = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
                   nclass=labels.max() + 1, nhids=[args.n_hids],
                   dropout=args.dropout,
                   lr=args.lr,
                   device=device).to(device)
-    rgcn_2 = RGCN(nnodes=perturbed_adj.shape[0], nfeat=features.shape[1],
+    rgcn_2 = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
                   nclass=labels.max() + 1, nhids=[args.n_hids],
                   dropout=args.dropout,
                   lr=args.lr,
@@ -98,10 +98,12 @@ def main():
     models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2), ('rgcn', rgcn, rgcn_2)]
     for name, model, _ in models:
         print(name)
-        fit_model(name, model, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch):
+        fit_model(name, model, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
         model.test(idx_test)
 
     print("random!! \n")
+    y_test = labels[test_idx]
+    y_test = torch.from_numpy(y_test).long().to(device)
    
     for ratio in args.n_perturbations:
         perturbed_adj = apply_Random(adj, n_perturbations = int(ratio*num_edges))
@@ -113,7 +115,7 @@ def main():
             total = len(test_idx)
             acc = correct.float() / float(total)
             print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
-            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch):
+            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
             print('posinoning atttack')
             model_2.test(test_idx)
 
@@ -128,7 +130,7 @@ def main():
             total = len(test_idx)
             acc = correct.float() / float(total)
             print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
-            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch):
+            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
             print('posinoning atttack')
             model_2.test(test_idx)
 
@@ -148,7 +150,7 @@ def main():
             total = len(test_idx)
             acc = correct.float() / float(total)
             print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
-            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch):
+            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
             print('posinoning atttack')
             model_2.test(test_idx)
 
@@ -159,7 +161,7 @@ def main():
                                            name = args.dataset,
                                            attack_method = 'nettack',
                                            ptb_rate = rate)
-        nettack_adj_list.append(perturbed_data.adj)
+        # nettack_adj_list.append(perturbed_data.adj)
         perturbed_adj = perturbed_data.adj
         for name, model, model_2 in models:
             print(name)
@@ -169,7 +171,7 @@ def main():
             total = len(test_idx)
             acc = correct.float() / float(total)
             print('Test Robust Accuracy (Random, %.2f): %.3f' % (ratio, acc))
-            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch):
+            fit_model(name, model_2, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
             print('posinoning atttack')
             model_2.test(test_idx)
 
