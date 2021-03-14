@@ -9,7 +9,7 @@ from attack import apply_Random, apply_DICE, apply_PGDAttack
 from deeprobust.graph.data import PrePtbDataset, Dataset
 from deeprobust.graph.defense import GCNJaccard, GCNSVD
 from MyDeepRobustRGCN import RGCN
-from MyDeepRobustGCN import GCNJaccard, GCNSVD
+# from MyDeepRobustGCN import GCNJaccard, GCNSVD
 
 os.environ["CUDA_VISIBLE_DEVICES"]="5"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -19,17 +19,17 @@ args = parser.parse_args("")
 args.dataset = 'cora'
 #args.n_classes = 10
 args.lr = 1e-2
-args.n_hids = [256, 256]
+args.n_hids = 32
 args.n_heads = 1                                 # currently not used in GNN2 implementation?
-args.n_layer = len(args.n_hids)+1                # same in default
-args.dropout = 0.2
-args.num_epochs = 500                            # same in default
+args.n_layer = 2                                 # same in default
+args.dropout = 0.5
+args.num_epochs = 200                            # same in default
 args.weight_decay = 0.01
 args.w_robust = 0
 args.step_per_epoch = 1
 args.device = device
 args.n_perturbations = [0.01, 0.02, 0.04]
-args.max_no_increase_epoch_num = 50
+args.max_no_increase_epoch_num = 10
 
 def fit_model(name, model, features, adj, labels, idx_train, idx_val, epochs):
     if name == 'jaccard':
@@ -49,13 +49,13 @@ def main():
     test_idx = idx_test
 
     jaccard = GCNJaccard(nfeat=features.shape[1],
-                          nhids=args.n_hids,
+                          nhid=args.n_hids,
                           nclass=labels.max().item() + 1,
                           dropout=args.dropout,
                           lr=args.lr, weight_decay=args.weight_decay,
                           device=device).to(device)
     jaccard_2 = GCNJaccard(nfeat=features.shape[1],
-                          nhids=args.n_hids,
+                          nhid=args.n_hids,
                           nclass=labels.max().item() + 1,
                           dropout=args.dropout,
                           lr=args.lr, weight_decay=args.weight_decay,
@@ -64,14 +64,14 @@ def main():
     print("This is GCN Jaccard \n\n\n")
 
     svd = GCNSVD(nfeat=features.shape[1],
-                        nhids=args.n_hids,
+                        nhid=args.n_hids,
                         nclass=labels.max().item() + 1,
                         dropout=args.dropout,
                         lr = args.lr,
                         weight_decay = args.weight_decay,
                         device=device).to(device)
     svd_2 = GCNSVD(nfeat=features.shape[1],
-                        nhids=args.n_hids,
+                        nhid=args.n_hids,
                         nclass=labels.max().item() + 1,
                         dropout=args.dropout,
                         lr = args.lr,
