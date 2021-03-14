@@ -27,7 +27,7 @@ class GGCL_F(Module):
         super(GGCL_F, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.dropout = dropout
+        self.dropout = torch.nn.Dropout(dropout)
         self.weight_miu = Parameter(torch.FloatTensor(in_features, out_features))
         self.weight_sigma = Parameter(torch.FloatTensor(in_features, out_features))
         self.reset_parameters()
@@ -37,7 +37,8 @@ class GGCL_F(Module):
         torch.nn.init.xavier_uniform_(self.weight_sigma)
 
     def forward(self, features, adj_norm1, adj_norm2, gamma=1):
-        features = F.dropout(features, self.dropout, training=self.training)
+        #features = F.dropout(features, self.dropout, training=self.training)
+        features = self.dropout(features)
         if utils.is_sparse_tensor(features):
             self.miu = F.elu(torch.spmm(features, self.weight_miu))
             self.sigma = F.relu(torch.spmm(features, self.weight_sigma))
@@ -62,7 +63,7 @@ class GGCL_D(Module):
         super(GGCL_D, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.dropout = dropout
+        self.dropout = torch.nn.Dropout(dropout)
         self.weight_miu = Parameter(torch.FloatTensor(in_features, out_features))
         self.weight_sigma = Parameter(torch.FloatTensor(in_features, out_features))
         # self.register_parameter('bias', None)
@@ -73,8 +74,8 @@ class GGCL_D(Module):
         torch.nn.init.xavier_uniform_(self.weight_sigma)
 
     def forward(self, miu, sigma, adj_norm1, adj_norm2, gamma=1):
-        miu = F.dropout(miu, self.dropout, training=self.training)
-        sigma = F.dropout(sigma, self.dropout, training=self.training)
+        miu = self.dropout(miu)
+        sigma = self.dropout(sigma)
         miu = F.elu(miu @ self.weight_miu)
         sigma = F.relu(sigma @ self.weight_sigma)
 
@@ -242,7 +243,7 @@ class RGCN(Module):
   
 #        adj, features, labels = utils.to_tensor(adj.todense(), features.todense(), labels, device=self.device)
         if type(adj) is not torch.Tensor:
-            features, adj, labels = utils.to_tensor(features, adj, labels, device=self.device)
+            adj, features, labels = utils.to_tensor(adj, features.todense(), labels, device=self.device)
         else:
             features = features.to(self.device)
             adj = adj.to(self.device)
