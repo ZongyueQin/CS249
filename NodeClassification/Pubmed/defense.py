@@ -9,21 +9,21 @@ from attack import apply_Random, apply_DICE, apply_PGDAttack
 from deeprobust.graph.data import PrePtbDataset, Dataset
 from deeprobust.graph.defense import GCNJaccard, GCNSVD
 from MyDeepRobustRGCN import RGCN
-from MyDeepRobustGCN import GCNJaccard, GCNSVD
+#from MyDeepRobustGCN import GCNJaccard, GCNSVD
 
 os.environ["CUDA_VISIBLE_DEVICES"]="5"
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
-args.dataset = 'cora'
+args.dataset = 'pubmed'
 #args.n_classes = 10
 args.lr = 1e-2
-args.n_hids = [256, 256]
+args.n_hids = 32
 args.n_heads = 1                                 # currently not used in GNN2 implementation?
-args.n_layer = len(args.n_hids)+1                # same in default
+args.n_layer = 2                # same in default
 args.dropout = 0.2
-args.num_epochs = 500                            # same in default
+args.num_epochs = 200                            # same in default
 args.weight_decay = 0.01
 args.w_robust = 0
 args.step_per_epoch = 1
@@ -40,7 +40,7 @@ def fit_model(name, model, features, adj, labels, idx_train, idx_val, epochs):
         model.fit(features, adj, labels, idx_train, idx_val, train_iters=epochs)
 
 def main():
-    data = Dataset(root='./Cora/dataset/', name=args.dataset, seed=15)
+    data = Dataset(root='dataset/', name=args.dataset, seed=15)
     adj, features, labels = data.adj, data.features, data.labels
     idx_train, idx_val, idx_test = data.idx_train, data.idx_val, data.idx_test
     num_edges = 44338
@@ -49,13 +49,13 @@ def main():
     test_idx = idx_test
 
     jaccard = GCNJaccard(nfeat=features.shape[1],
-                          nhids=args.n_hids,
+                          nhid=args.n_hids,
                           nclass=labels.max().item() + 1,
                           dropout=args.dropout,
                           lr=args.lr, weight_decay=args.weight_decay,
                           device=device).to(device)
     jaccard_2 = GCNJaccard(nfeat=features.shape[1],
-                          nhids=args.n_hids,
+                          nhid=args.n_hids,
                           nclass=labels.max().item() + 1,
                           dropout=args.dropout,
                           lr=args.lr, weight_decay=args.weight_decay,
@@ -64,14 +64,14 @@ def main():
     print("This is GCN Jaccard \n\n\n")
 
     svd = GCNSVD(nfeat=features.shape[1],
-                        nhids=args.n_hids,
+                        nhid=args.n_hids,
                         nclass=labels.max().item() + 1,
                         dropout=args.dropout,
                         lr = args.lr,
                         weight_decay = args.weight_decay,
                         device=device).to(device)
     svd_2 = GCNSVD(nfeat=features.shape[1],
-                        nhids=args.n_hids,
+                        nhid=args.n_hids,
                         nclass=labels.max().item() + 1,
                         dropout=args.dropout,
                         lr = args.lr,
@@ -81,23 +81,23 @@ def main():
 
     print("This is GCN SVD \n\n")
 
-    # rgcn = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
-    #               nclass=labels.max() + 1, nhids=[args.n_hids],
-    #               dropout=args.dropout,
-    #               lr=args.lr,
-    #               device=device).to(device)
-    # rgcn_2 = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
-    #               nclass=labels.max() + 1, nhids=[args.n_hids],
-    #               dropout=args.dropout,
-    #               lr=args.lr,
-    #               device=device).to(device)
-    #
-    # print("This is RGCN \n\n")
+    rgcn = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
+                   nclass=labels.max() + 1, nhids=[args.n_hids],
+                   dropout=args.dropout,
+                   lr=args.lr,
+                   device=device).to(device)
+    rgcn_2 = RGCN(nnodes=adj.shape[0], nfeat=features.shape[1],
+                   nclass=labels.max() + 1, nhids=[args.n_hids],
+                   dropout=args.dropout,
+                   lr=args.lr,
+                   device=device).to(device)
+    
+    print("This is RGCN \n\n")
 
 
     print("clean!! \n")
-    # models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2), ('rgcn', rgcn, rgcn_2)]
-    models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2)]
+    models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2), ('rgcn', rgcn, rgcn_2)]
+    #models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2)]
     for name, model, _ in models:
         print(name)
         fit_model(name, model, features, adj, labels, idx_train, idx_val, args.num_epochs*args.step_per_epoch)
