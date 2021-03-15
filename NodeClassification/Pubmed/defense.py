@@ -11,8 +11,8 @@ from deeprobust.graph.defense import GCNJaccard, GCNSVD
 from MyDeepRobustRGCN import RGCN
 
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-#device = 'cpu'
+#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = 'cpu'
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
