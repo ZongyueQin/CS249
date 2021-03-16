@@ -7,12 +7,12 @@ import os
 import argparse
 from attack import apply_Random, apply_DICE, apply_PGDAttack
 from deeprobust.graph.data import PrePtbDataset, Dataset
-from deeprobust.graph.defense import GCNJaccard, GCNSVD
+from deeprobust.graph.defense import GCNJaccard, GCNSVD, GCN
 from MyDeepRobustRGCN import RGCN
 
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
-#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = 'cpu'
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+#device = 'cpu'
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
@@ -38,6 +38,11 @@ def fit_model(name, model, features, adj, labels, idx_train, idx_val, epochs):
         model.fit(features, adj, labels, idx_train, idx_val, k=20, train_iters=epochs)            # svd
     if name == 'rgcn':
         model.fit(features, adj, labels, idx_train, idx_val, train_iters=epochs)
+    if name == 'gcn':
+        model.fit(features, adj, labels, idx_train, idx_val, train_iters=epochs)
+    else:
+        raise RuntimeError('unrecognized model name: ' + name)
+
 
 def main():
     data = Dataset(root='dataset/', name=args.dataset, seed=15)
@@ -48,6 +53,7 @@ def main():
     valid_idx = idx_val
     test_idx = idx_test
 
+    """
     jaccard = GCNJaccard(nfeat=features.shape[1],
                           nhid=args.n_hids,
                           nclass=labels.max().item() + 1,
@@ -93,10 +99,27 @@ def main():
                    device=device).to(device)
     
     print("This is RGCN \n\n")
+    """
+    gcn = GCN(nfeat=features.shape[1],
+                        nhid=args.n_hids,
+                        nclass=labels.max().item() + 1,
+                        dropout=args.dropout,
+                        lr = args.lr,
+                        weight_decay = args.weight_decay,
+                        device=device).to(device)
+
+    gcn_2 = GCN(nfeat=features.shape[1],
+                        nhid=args.n_hids,
+                        nclass=labels.max().item() + 1,
+                        dropout=args.dropout,
+                        lr = args.lr,
+                        weight_decay = args.weight_decay,
+                        device=device).to(device)
 
 
     print("clean!! \n")
-    models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2), ('rgcn', rgcn, rgcn_2)]
+    models = [('gcn', gcn, gcn_2)]
+    #models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2), ('rgcn', rgcn, rgcn_2)]
     #models = [('jaccard', jaccard, jaccard_2), ('svd', svd, svd_2)]
     for name, model, _ in models:
         print(name)
