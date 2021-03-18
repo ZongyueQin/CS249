@@ -13,10 +13,10 @@ from torch_geometric.utils import softmax, add_remaining_self_loops
 from torch_geometric.data import Data
 import math
 
-def turn_prob(inp):
-    prob = torch.sigmoid(inp)
-    prob = torch.cat([prob, 1-prob], dim=1)
-    return prob
+#def turn_prob(inp):
+#    prob = torch.sigmoid(inp)
+#    prob = torch.cat([prob, 1-prob], dim=1)
+#    return prob
 
 def randomly_perturb(node_size, edge_index, ratio = 0.3):
     # add edges
@@ -27,12 +27,12 @@ def randomly_perturb(node_size, edge_index, ratio = 0.3):
 def pre_process(d):
     new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index)
     return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index)
-
-def pre_process_no_batch(d):
-    edge_index, _ = add_remaining_self_loops(d.edge_index, num_nodes = len(d.x))
-    new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = edge_index)
-    return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index, batch=None,
-                train_mask = d.train_mask, val_mask = d.val_mask, test_mask = d.test_mask, num_nodes = d.num_nodes)
+#
+#def pre_process_no_batch(d):
+#    edge_index, _ = add_remaining_self_loops(d.edge_index, num_nodes = len(d.x))
+#    new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = edge_index)
+#    return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index, batch=None,
+#                train_mask = d.train_mask, val_mask = d.val_mask, test_mask = d.test_mask, num_nodes = d.num_nodes)
 
 def get_optimizer(model: nn.Module, learning_rate: float = 1e-4, adam_eps: float = 1e-6,
                   weight_decay: float = 0.0, ) -> torch.optim.Optimizer:
