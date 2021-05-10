@@ -63,7 +63,8 @@ class GCN_Layer(MessagePassing):
 
         self.att        = None
         self.a_linear   = nn.Linear(n_hid,   n_hid)
-        self.norm       = nn.BatchNorm1d(n_hid)
+        #self.norm       = nn.BatchNorm1d(n_hid)
+        self.norm = nn.LayerNorm(n_hid)
         self.drop       = nn.Dropout(dropout)
         
     def forward(self, node_inp, edge_index, adv_att):
@@ -101,7 +102,7 @@ args.n_layer = 2
 args.dropout = 0.5
 args.num_epochs = 500
 args.weight_decay = 0.01
-args.w_robust = 0.3
+args.w_robust = 0.0
 args.step_per_epoch = 1
 args.device = device
 args.n_perturbations = [0.01, 0.02, 0.04]
@@ -130,7 +131,7 @@ pyg_data = Dpr2Pyg(dpr_data)
 
 
 def pre_process_no_batch(d):
-    new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index)
+    new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index, ratio=100)
     return Data(x=d.x, y=d.y, edge_index=new_edge_index, edge_attr=init_att, ori_edge_index = d.edge_index, batch=None,
                 train_mask = d.train_mask, val_mask = d.val_mask, test_mask = d.test_mask, num_nodes = d.num_nodes)
 

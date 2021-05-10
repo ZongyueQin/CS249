@@ -9,7 +9,7 @@ from torch.autograd import Variable
 from torch_geometric.nn import GCNConv, GATConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import glorot, uniform
-from torch_geometric.utils import softmax, add_remaining_self_loops, degree
+from torch_geometric.utils import softmax, add_remaining_self_loops, degree, to_undirected
 from torch_geometric.data import Data
 import math
 
@@ -27,11 +27,18 @@ def idx2mask(idx, num_nodes):
 #    prob = torch.cat([prob, 1-prob], dim=1)
 #    return prob
 
-def randomly_perturb(node_size, edge_index, ratio = 0.3):
+def randomly_perturb(node_size, edge_index, ratio = 0.2, undirected = False):
     # add edges
     new_edge = np.random.choice(node_size, 2 * int(edge_index.shape[1] * ratio)).reshape(2, -1)
-    init_att = [0.99] * edge_index.shape[1] + [0.01] * len(new_edge[0])
-    return torch.cat([edge_index, torch.LongTensor(new_edge)], dim=1), torch.FloatTensor(init_att)
+    
+    if not undirected:
+        init_att = [0.99] * edge_index.shape[1] + [0.01] * len(new_edge[0]) 
+        return torch.cat([edge_index, torch.LongTensor(new_edge)], dim=1), torch.FloatTensor(init_att)
+    else:
+        init_att = [0.99] * edge_index.shape[1] + [0.01] * (len(new_edge[0])*2) 
+        reverse = [1,0]
+        return torch.cat([edge_index, torch.LongTensor(new_edge), torch.LongTensor(new_edge[reverse])], dim=1), torch.FloatTensor(init_att)
+
 
 def pre_process(d):
     new_edge_index, init_att = randomly_perturb(node_size = len(d.x), edge_index = d.edge_index)

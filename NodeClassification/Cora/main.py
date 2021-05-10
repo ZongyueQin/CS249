@@ -33,6 +33,9 @@ from utils import *
 from attack import apply_Random, apply_DICE, apply_PGDAttack
 import scipy.sparse
 
+import GraphAT
+from GraphAT import GraphAT_Loss, GraphVAT_Loss, sample_neighbors, EdgeIndex2NeighborLists
+
 
 # +
 class GNN(nn.Module):
@@ -106,7 +109,7 @@ args.n_layer = 2
 args.dropout = 0.
 args.num_epochs = 500
 args.weight_decay = 0.0
-args.w_robust = 0.25
+args.w_robust = 0.
 args.step_per_epoch = 1
 args.device = device
 args.n_perturbations = [0.01, 0.02, 0.04]
@@ -114,6 +117,16 @@ args.max_no_increase_epoch_num = 10
 #args.node_dim = 9
 #args.edge_dim = 3
 #args.bsz      = 128
+#arguments for GraphAT
+args.num_power_iterations = 1
+args.xi = 1e-5
+args.epsilon = 1.0
+args.epsilon_graph = 0.01
+args.num_neighbors = 2
+args.gat_w = 1.0
+args.gvat_w = 0.5
+
+GraphAT.global_args = args
 
 print('w_robust = %f'%args.w_robust)
 print('Loading Data')
@@ -123,6 +136,7 @@ dpr_data = Dataset(root='dataset/', name=args.dataset, seed=15)
 num_feats = dpr_data.features.shape[1]
 num_classes = dpr_data.labels.max().item() + 1
 num_edges = 5429
+
 
 pyg_data = Dpr2Pyg(dpr_data)
 
@@ -210,12 +224,17 @@ train_loss = []
 train_robust = [0]
 flag = False
 train_num = pyg_data.data.train_mask.sum().float()
+
+neighbor_lists = EdgeIndex2NeighborLists(pyg_data.data.edge_index,pyg_data.data.num_nodes, True) 
+
 for epoch in range(args.num_epochs):
     if flag:
         break
     data = pre_process_no_batch(pyg_data.data).to(device)
+    
 
     for i in range(args.step_per_epoch):
+
         ori_adv_atts, adv_adv_atts = trades_on_edge(data, model, train=True, _type='inf')
         #print((ori_adv_atts[0]<0.1).sum())
         model.train()
@@ -234,6 +253,18 @@ for epoch in range(args.num_epochs):
         loss_robust += criterion_kl(adv_out[idx], target[idx])
         #loss_robust += criterion_kl(F.log_softmax(adv_out[idx], dim=1), F.softmax(ori_out[idx], dim=1))/(2*train_num)
         #loss_robust += criterion_kl(turn_prob(ori_out[idx]).log(), turn_prob(adv_out[idx]))/train_num
+
+        if args.gat_w > 0:
+            neighbor_ids = sample_neighbors(neighbor_lists)
+            loss_gat, _ = GraphAT_Loss(data.x, data.edge_index, model, ori_out, 
+                                    neighbor_ids, data.train_mask + data.test_mask + data.val_mask,
+                                    None, ori_adv_atts)
+            loss += args.gat_w * loss_gat
+        if args.gvat_w > 0:
+            loss_gvat = GraphVAT_Loss(data.x, data.edge_index, model, ori_out,
+                                      None, ori_adv_atts)
+            loss += args.gvat_w * loss_gvat
+             
 
         if np.isinf(loss_robust.item()):
             print('loss_robust')
@@ -294,9 +325,9 @@ for epoch in range(args.num_epochs):
         total = data.train_mask.sum()
         train_acc = correct.float() / total.float()
 
-    print('Epoch %d: LR: %.5f, Train loss: %.3f Train Robust: %.3f Train Accuracy: %.3f Valid loss: %.3f  Valid Accuracy: %.3f' \
+    print('Epoch %d: LR: %.5f, Train loss: %.3f Train Robust: %.3f Loss GVAT: %.3f Train Accuracy: %.3f Valid loss: %.3f  Valid Accuracy: %.3f' \
           % (epoch, optimizer.param_groups[0]['lr'], np.average(train_loss[-100:]), np.average(train_robust[-100:]),\
-             train_acc, valid_loss, valid_acc))
+             loss_gat + loss_gvat, train_acc, valid_loss, valid_acc))
 
 #criterion_kl(turn_prob(ori_out).log(), turn_prob(adv_out))
 

@@ -33,9 +33,6 @@ from attack import apply_Random, apply_DICE, apply_PGDAttack
 import scipy.sparse
 from preprocess import GCNSVD, GCNJaccard
 
-import GraphAT
-from GraphAT import GraphAT_Loss, GraphVAT_Loss, sample_neighbors, EdgeIndex2NeighborLists
-
 # +
 class GNN(nn.Module):
     def __init__(self, n_inp, n_hid, n_out, n_heads, n_layers, dropout, node_level):
@@ -99,7 +96,7 @@ print(device)
 
 parser = argparse.ArgumentParser()
 args = parser.parse_args("")
-args.dataset = 'pubmed'
+args.dataset = 'cora'
 #args.n_classes = 10 
 args.lr = 3e-3
 args.n_hids = 32
@@ -114,22 +111,12 @@ args.device = device
 args.n_perturbations = [0.01, 0.02, 0.04]
 args.max_no_increase_epoch_num = 10
 args.use_svd = False
-args.use_jaccard = False
+args.use_jaccard = True
 args.svd_k = 20
 args.jaccard_thres = 0.01
 #args.node_dim = 9
 #args.edge_dim = 3
 #args.bsz      = 128
-#arguments for GraphAT
-args.num_power_iterations = 1
-args.xi = 1e-6
-args.epsilon = 1.0
-args.epsilon_graph = 0.01
-args.num_neighbors = 2
-args.gat_w = 0.5 
-args.gvat_w = 0.5
-
-GraphAT.global_args = args
 
 print('w_robust = %f'%args.w_robust)
 print('Loading Data')
@@ -203,7 +190,7 @@ def turn_prob(inp):
 dpr_data = Dataset(root='dataset/', name=args.dataset, seed=15)
 num_feats = dpr_data.features.shape[1]
 num_classes = dpr_data.labels.max().item() + 1
-num_edges = 44338
+num_edges = 5429
 pyg_data = Dpr2Pyg(dpr_data)
 
 if args.use_svd == True:
@@ -238,8 +225,6 @@ train_loss = []
 train_robust = [0]
 flag = False
 train_num = pyg_data.data.train_mask.sum().float()
-print(pyg_data.data.is_directed())
-neighbor_lists = EdgeIndex2NeighborLists(pyg_data.data.edge_index,pyg_data.data.num_nodes, pyg_data.data.is_directed())
 for epoch in range(args.num_epochs):
     if flag:
         break
@@ -264,20 +249,7 @@ for epoch in range(args.num_epochs):
         loss_robust += criterion_kl(adv_out[idx], target[idx])
         #loss_robust += criterion_kl(F.log_softmax(adv_out[idx], dim=1), F.softmax(ori_out[idx], dim=1))/(2*train_num)
         #loss_robust += criterion_kl(turn_prob(ori_out[idx]).log(), turn_prob(adv_out[idx]))/train_num
-        if args.gat_w > 0:
-            neighbor_ids = sample_neighbors(neighbor_lists)
-            loss_gat, _ = GraphAT_Loss(data.x, data.edge_index, model, ori_out,
-                                    neighbor_ids, data.train_mask + data.test_mask + data.val_mask,
-                                    None, ori_adv_atts)
-            loss += args.gat_w * loss_gat
-        else:
-            loss_gat = 0
-        if args.gvat_w > 0:
-            loss_gvat = GraphVAT_Loss(data.x, data.edge_index, model, ori_out,
-                                      None, ori_adv_atts)
-            loss += args.gvat_w * loss_gvat
-        else:
-            loss_gvat = 0
+
         if np.isinf(loss_robust.item()):
             print('loss_robust')
             prob = turn_prob(ori_out).cpu().detach().numpy()
